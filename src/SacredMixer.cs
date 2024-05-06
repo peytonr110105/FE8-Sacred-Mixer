@@ -114,6 +114,12 @@ while (true)
         if (songID == 0 || songID == 32767)
         {
             Console.WriteLine($"Muting audio.");
+            //Stops the currently playing song if the game mutes music (0 or 7FFF)
+            if (songToPause != null)
+            {
+                restartSong = 1;
+                songToPause.outputController.Stop();
+            }
         }
         else if (checkSongExists(songID) != -1)
         {
@@ -138,32 +144,38 @@ while (true)
             if (songToPlay.outputController.PlaybackState == PlaybackState.Paused)
             {
                 //Resume playback if marked as continuous
-                if (songToPlay.continuous == 0)
+                //Resets song positions if audio was muted by the game (0 or 7FFF)
+                if (songToPlay.continuous == 0 && (previousSongID != 0 || previousSongID != 32767))
                 {
                     songToPlay.customFadeIn();
                 }
                 //Otherwise start from scratch
                 else
                 {
+                    Console.WriteLine("Playing file from the beginning...");
                     restartSong = 1;
                     //Have to fully stop playback before restarting file
                     songToPlay.outputController.Stop();
+                    songToPlay.audioStream.Seek(0, SeekOrigin.Begin);
                     //Also have to reset volume since we faded it out previously
                     songToPlay.outputController.Volume = songToPlay.volume;
-                    songToPlay.outputController.Init(songToPlay.audioStream);
+                    //songToPlay.outputController.Init(songToPlay.audioStream);
                     songToPlay.outputController.Play();
                     restartSong = 0;
                 }
             }
             //Restart song if it ended (this needs to be moved to an event handler)
-            else if (songToPlay.outputController.PlaybackState == PlaybackState.Stopped)
+            //Restart song if marked as non-continuous playback
+            else if (songToPlay.outputController.PlaybackState == PlaybackState.Stopped || songToPlay.continuous == 1)
             {
+                Console.WriteLine("Playing file from the beginning...");
                 restartSong = 1;
                 //Have to fully stop playback before restarting file
                 songToPlay.outputController.Stop();
+                songToPlay.audioStream.Seek(0, SeekOrigin.Begin);
                 //Also have to reset volume since we faded it out previously
                 songToPlay.outputController.Volume = songToPlay.volume;
-                songToPlay.outputController.Init(songToPlay.audioStream);
+                //songToPlay.outputController.Init(songToPlay.audioStream);
                 songToPlay.outputController.Play();
                 restartSong = 0;
             }
@@ -185,14 +197,20 @@ void outputController_songStopped(object sender, EventArgs e)
     Console.WriteLine("Playback Stopped...");
     if (restartSong == 0)
     {
-        Console.WriteLine("Restarting audio track.");
         Song songToLoop = SongOverrides.Find(x => x.songID == currentSongID);
-        restartSong = 1;
-        songToLoop.restartPlayback();
-        if (songToLoop.outputController.PlaybackState == PlaybackState.Playing)
+        if (songToLoop != null)
         {
-            Console.WriteLine("Trying to play back...");
+            if (songToLoop.allowLooping == 1)
+            {
+                Console.WriteLine("Restarting audio track.");
+                restartSong = 1;
+                songToLoop.restartPlayback();
+                if (songToLoop.outputController.PlaybackState == PlaybackState.Playing)
+                {
+                    Console.WriteLine("Trying to play back...");
+                }
+            }
         }
-        restartSong = 0;
     }
+    restartSong = 0;
 }

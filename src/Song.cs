@@ -15,30 +15,57 @@ namespace src
         public string wavPath;
         public int songID;
         public int continuous;
+        public int allowLooping;
         public float volume;
+        //States a song can be in:
+        //0 = playing/stopped
+        //1 = fade in/fade out
+        //used to prevent exceptions relating to start/stop handler
+        public int songState = 0;
         public WaveOutEvent outputController = new WaveOutEvent();
         public AudioFileReader audioStream;
         //Fades out song by manually settings its volume every 8ms
         //This needs to be made async!!!
         public void customFadeOut()
         {
-            //janky custom fade-out
-            float volScale = volume;
-            while (volScale > 0.0f)
+            //prevents a crash if the song is in the process of looping
+            if (outputController.PlaybackState == PlaybackState.Playing)
             {
-                volScale -= 0.01f;
-                Thread.Sleep(8);
-                if (volScale < 0.0f)
+                songState = 1;
+                //janky custom fade-out
+                float volScale = volume;
+                while (volScale > 0.0f)
                 {
-                    volScale = 0.0f;
+                    volScale -= 0.01f;
+                    Thread.Sleep(8);
+                    if (volScale < 0.0f)
+                    {
+                        volScale = 0.0f;
+                    }
+                    if (outputController.PlaybackState == PlaybackState.Playing)
+                    {
+                        outputController.Volume = volScale;
+                    }
+                    else
+                    {
+                        return;
+                    }
                 }
-                outputController.Volume = volScale;
+                songState = 0;
+                if (outputController.PlaybackState == PlaybackState.Playing)
+                {
+                    outputController.Pause();
+                }
+                else
+                {
+                    return;
+                }
             }
-            outputController.Pause();
         }
         //same as above but for fade in
         public void customFadeIn()
         {
+            songState = 1;
             outputController.Play();
             //janky custom fade-in
             float volScale = 0.0f;
@@ -50,8 +77,12 @@ namespace src
                 {
                     volScale = volume;
                 }
-                outputController.Volume = volScale;
+                if (outputController.PlaybackState == PlaybackState.Playing)
+                {
+                    outputController.Volume = volScale;
+                }
             }
+            songState = 0;
         }
         public Song(string conf, int id)
         {
@@ -73,6 +104,8 @@ namespace src
                 volume = float.Parse(s);
                 s = sr.ReadLine();
                 continuous = Int32.Parse(s);
+                s = sr.ReadLine();
+                allowLooping = Int32.Parse(s);
             }
             audioStream = new AudioFileReader(wavPath);
             outputController.Init(audioStream);
@@ -81,9 +114,8 @@ namespace src
         public void restartPlayback()
         {
             outputController.Stop();
-            audioStream = new AudioFileReader(wavPath);
+            audioStream.Seek(0, SeekOrigin.Begin);
             outputController.Volume = volume;
-            outputController.Init(audioStream);
             outputController.Play();
         }
     }
